@@ -1,0 +1,179 @@
+"""RunPod serverless handler for Google MedGemma 27B model."""
+import os
+import json
+import logging
+import runpod
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Global model and tokenizer variables
+model = None
+tokenizer = None
+
+def initialize_model():
+    """Load the MedGemma 27B model and tokenizer."""
+    global model, tokenizer
+    
+    if model is not None and tokenizer is not None:
+        return
+    
+    model_id = "google/medgemma-27b-text-it"
+    
+    # Check for Hugging Face token
+    hf_token = os.getenv("HF_TOKEN")
+    if not hf_token:
+        raise ValueError(
+            "HF_TOKEN environment variable not set. "
+            "Please set your Hugging Face token to access MedGemma models."
+        )
+    
+    logger.info(f"Loading model: {model_id}")
+    
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id,
+        token=hf_token,
+        trust_remote_code=True
+    )
+    
+    # Set pad token if not set
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load model with optimizations
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        token=hf_token,
+        torch_dtype=torch.bfloat16,  # Use bfloat16 for memory efficiency
+        device_map="auto",  # Automatically handle device placement
+        trust_remote_code=True,
+        low_cpu_mem_usage=True
+    )
+    
+    logger.info("Model loaded successfully")
+
+def handler(job):
+    """
+    Process a job request for medical text generation.
+    
+    Expected input:
+    {
+        "prompt": "Medical question or text",
+        "max_tokens": 512 (optional),
+        "temperature": 0.7 (optional),
+        "top_p": 0.9 (optional)
+    }
+    """
+    try:
+        # Initialize model if not already loaded
+        if model is None or tokenizer is None:
+            initialize_model()
+        
+        # Extract input parameters
+        job_input = job.get("input", {})
+        prompt = job_input.get("prompt")
+        
+        if not prompt:
+            return {
+                "error": "Missing required parameter: 'prompt'",
+                "status": "error"
+            }
+        
+        # Generation parameters
+        max_tokens = job_input.get("max_tokens", 512)
+        temperature = job_input.get("temperature", 0.7)
+        top_p = job_input.get("top_p", 0.9)
+        
+        # Validate parameters
+        if max_tokens <= 0 or max_tokens > 2048:
+            return {
+                "error": "max_tokens must be between 1 and 2048",
+                "status": "error"
+            }
+        
+        # Tokenize input
+        inputs = tokenizer(prompt, return_tensors="pt", padding=False, truncation=True)
+        
+        # Move inputs to the same device as model
+        # Handle multi-device models (device_map="auto")
+        if hasattr(model, 'device'):
+            device = model.device
+        elif hasattr(model, 'hf_device_map'):
+            # Multi-device model, use first device
+            device = next(iter(model.hf_device_map.values()))
+        else:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        input_length = inputs['input_ids'].shape[1]
+        
+        # Generate response
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=True,
+                pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id
+            )
+        
+        # Extract only the generated tokens (excluding input prompt)
+        generated_ids = outputs[0][input_length:]
+        response = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        
+        return {
+            "output": response,
+            "status": "success"
+        }
+    
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        return {
+            "error": str(e),
+            "status": "error"
+        }
+    except RuntimeError as e:
+        logger.error(f"Runtime error (likely GPU/OOM): {e}")
+        return {
+            "error": f"Model inference error: {str(e)}",
+            "status": "error"
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        return {
+            "error": f"Unexpected error: {str(e)}",
+            "status": "error"
+        }
+
+# Initialize model at startup
+logger.info("Initializing MedGemma 27B model...")
+try:
+    initialize_model()
+except Exception as e:
+    logger.warning(f"Could not initialize model at startup: {e}")
+    logger.info("Model will be initialized on first request")
+
+# Support local testing
+if __name__ == "__main__":
+    # Load test input if available
+    if os.path.exists("test_input.json"):
+        with open("test_input.json", "r") as f:
+            test_input = json.load(f)
+        logger.info("Running local test with test_input.json")
+        result = handler(test_input)
+        print(json.dumps(result, indent=2))
+    else:
+        logger.info("No test_input.json found. Starting RunPod serverless worker...")
+        runpod.serverless.start({"handler": handler})
+else:
+    # Start the serverless worker
+    runpod.serverless.start({"handler": handler})

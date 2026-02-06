@@ -1,15 +1,22 @@
-FROM runpod/base:0.6.3-cuda11.8.0
+# RunPod vLLM Worker - MedGemma 27B Deployment
+# 
+# This Dockerfile is for reference/documentation purposes.
+# For production deployment, use the pre-built RunPod vLLM worker image
+# via RunPod Console: runpod/worker-v1-vllm
+#
+# To deploy:
+# 1. Go to RunPod Serverless Console
+# 2. Create new endpoint
+# 3. Select "runpod/worker-v1-vllm" image
+# 4. Configure environment variables (see .env.example)
+#
+# For local testing with this Dockerfile:
+# docker build -t medgemma-vllm .
+# docker run -e MODEL_NAME=google/medgemma-27b-text-it -e HF_TOKEN=your_token medgemma-vllm
 
-# Set python3.11 as the default python
-RUN ln -sf $(which python3.11) /usr/local/bin/python && \
-    ln -sf $(which python3.11) /usr/local/bin/python3
+FROM runpod/worker-v1-vllm:latest
 
-# Install dependencies
-COPY requirements.txt /requirements.txt
-RUN uv pip install --upgrade -r /requirements.txt --no-cache-dir --system
+# The vLLM worker image handles everything
+# Just configure via environment variables at runtime
 
-# Add files
-ADD handler.py .
-
-# Run the handler
-CMD python -u /handler.py
+# No additional setup needed - vLLM worker is production-ready

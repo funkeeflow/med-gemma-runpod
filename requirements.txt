@@ -1,5 +1,9 @@
-runpod>=1.5.0
-transformers>=4.40.0
-torch>=2.0.0
-accelerate>=0.25.0
-sentencepiece>=0.1.99
+# Minimal dependencies for local testing (if needed)
+# The vLLM worker image includes all necessary dependencies
+# This file is only needed if you want to test locally with OpenAI client
+
+# OpenAI client for testing the deployed endpoint
+openai>=1.0.0
+
+# Optional: For local testing scripts
+python-dotenv>=1.0.0

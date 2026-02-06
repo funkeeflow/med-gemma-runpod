@@ -1,7 +1,12 @@
 {
-  "input": {
-    "prompt": "What are the common symptoms of type 2 diabetes?",
-    "max_tokens": 256,
-    "temperature": 0.7
-  }
+  "model": "google/medgemma-27b-text-it",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What are the common symptoms of type 2 diabetes?"
+    }
+  ],
+  "max_tokens": 256,
+  "temperature": 0.7,
+  "top_p": 0.9
 }

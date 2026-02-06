@@ -8,3 +8,7 @@
 test_input.json
 .env
 .env.local
+handler.py.old
+CODE_REVIEW.md
+DEPLOYMENT.md
+API_EXAMPLES.md
