@@ -1,0 +1,10 @@
+# RunPod ignore patterns
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+!README.md
+test_input.json
+.env
+.env.local

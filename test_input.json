@@ -1,0 +1,7 @@
+{
+  "input": {
+    "prompt": "What are the common symptoms of type 2 diabetes?",
+    "max_tokens": 256,
+    "temperature": 0.7
+  }
+}
